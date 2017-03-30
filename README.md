@@ -1,6 +1,6 @@
 PyrkovBot
 =====
-A fun little IRC bot that uses markov chains to create messages based on user history.
+A fun little IRC bot that uses markov chains to create messages based on user history. The name comes from a mix of Python and Markov.
 
 Commands
 ---
