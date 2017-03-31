@@ -9,7 +9,7 @@ from twisted.words.protocols import irc
 from config import *
 from Markov import *
 
-class MyFirstIRCProtocol(irc.IRCClient):
+class BotProtocol(irc.IRCClient):
     nickname = NICKNAME
     password = PASSWORD
 
@@ -37,9 +37,10 @@ class MyFirstIRCProtocol(irc.IRCClient):
     def privmsg(self, user, channel, message):
         nick, _, host = user.partition('!')
         message = message.strip()
-        self.markov.AddMessage(user, message)
+        #self.markov.AddMessage(user, message)
         if not message.startswith('!'):  # not a trigger command
-            return  # so do nothing
+            self.markov.AddMessage(nick, message) # Add message to database
+            return
         command, sep, rest = message.lstrip('!').partition(' ')
         # Get the function corresponding to the command given.
         func = getattr(self, 'command_' + command, None)
@@ -74,30 +75,33 @@ class MyFirstIRCProtocol(irc.IRCClient):
     def _showError(self, failure):
         return failure.getErrorMessage()
 
-    def command_ping(self, rest):
-        return 'Pong.'
+    def command_stats(self, rest):
+        self._sendMessage(self.markov.GetStats(rest), '#' + CHANNEL)
+
+    #def command_ping(self, rest):
+    #    return 'Pong.'
 
     def command_markov(self, rest):
         self._sendMessage(self.markov.CreateMessage(), '#' + CHANNEL)
 
-    def command_saylater(self, rest):
-        when, sep, msg = rest.partition(' ')
-        when = int(when)
-        d = defer.Deferred()
+    #def command_saylater(self, rest):
+    #    when, sep, msg = rest.partition(' ')
+    #    when = int(when)
+    #    d = defer.Deferred()
         # A small example of how to defer the reply from a command. callLater
         # will callback the Deferred with the reply after so many seconds.
-        reactor.callLater(when, d.callback, msg)
+    #    reactor.callLater(when, d.callback, msg)
         # Returning the Deferred here means that it'll be returned from
         # maybeDeferred in privmsg.
-        return d
+    #    return d
 
-class MyFirstIRCFactory(protocol.ReconnectingClientFactory):
-    protocol = MyFirstIRCProtocol
+class IRCFactory(protocol.ReconnectingClientFactory):
+    protocol = BotProtocol
     channels = ['#' + CHANNEL]
 
 def main(reactor, description):
     endpoint = endpoints.clientFromString(reactor, description)
-    factory = MyFirstIRCFactory()
+    factory = IRCFactory()
     d = endpoint.connect(factory)
     d.addCallback(lambda protocol: protocol.deferred)
     return d

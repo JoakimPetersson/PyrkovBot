@@ -6,7 +6,7 @@ import random
 import re
 from tqdm import tqdm
 
-sqlite_file = "Test.db"
+sqlite_file = "Pyrkov.db"
 
 class Markov():
     def __init__(self):
@@ -15,75 +15,108 @@ class Markov():
         self.conn = sqlite3.connect(sqlite_file)
         self.c = self.conn.cursor()
 
-        statement = ("CREATE TABLE IF NOT EXISTS Words("
-                                  "id INTEGER PRIMARY KEY   NOT NULL,"
-                                  "word TEXT   UNIQUE       NOT NULL,"
-                                  "occurrences INT       NOT NULL)");
+        statement = """CREATE TABLE IF NOT EXISTS Words(
+                    id INTEGER PRIMARY KEY   NOT NULL,
+                    word TEXT   UNIQUE       NOT NULL,
+                    occurrences INT       NOT NULL)"""
 
         self.c.execute(statement)
 
-        statement = ("CREATE TABLE IF NOT EXISTS WordCouples ("
-                  "firstword INTEGER NOT NULL,"
-                  "secondword INTEGER NOT NULL,"
-                  "occurrences INTEGER NOT NULL,"
-                  "FOREIGN KEY (firstword) REFERENCES Words (word),"
-                  "FOREIGN KEY (secondword) REFERENCES Words (word),"
-                  "PRIMARY KEY (firstword, secondword)"
-                  ")")
+        statement = """CREATE TABLE IF NOT EXISTS WordCouples (
+                    firstword INTEGER NOT NULL,
+                    secondword INTEGER NOT NULL,
+                    occurrences INTEGER NOT NULL,
+                    FOREIGN KEY (firstword) REFERENCES Words (word),
+                    FOREIGN KEY (secondword) REFERENCES Words (word),
+                    PRIMARY KEY (firstword, secondword))"""
 
         self.c.execute(statement)
 
-        statement = ("CREATE TABLE IF NOT EXISTS Users ("
-                  "id INTEGER PRIMARY KEY NOT NULL,"
-                  "nickname TEXT UNIQUE NOT NULL)")
+        statement = """CREATE TABLE IF NOT EXISTS Users (
+                    id INTEGER PRIMARY KEY NOT NULL,
+                    nickname TEXT UNIQUE NOT NULL)"""
 
         self.c.execute(statement)
 
-        statement = ("CREATE TABLE IF NOT EXISTS UserWords ("
-                    "userid INTEGER NOT NULL,"
-                    "wordid INTEGER NOT NULL,"
-                    "occurrences INT NOT NULL,"
-                    "FOREIGN KEY (userid) REFERENCES Users (id),"
-                    "FOREIGN KEY (wordid) REFERENCES Words (id))"
-                    )
+        statement = """CREATE TABLE IF NOT EXISTS UserWords (
+                    userid INTEGER NOT NULL,
+                    wordid INTEGER NOT NULL,
+                    occurrences INT NOT NULL,
+                    FOREIGN KEY (userid) REFERENCES Users (id),
+                    FOREIGN KEY (wordid) REFERENCES Words (id))"""
 
         self.c.execute(statement)
 
         self.conn.commit()
 
     def AddUser(self, user):
-        statement = ("SELECT EXISTS(SELECT 1 FROM Users WHERE UPPER(nickname)=UPPER(\"" + user + "\")")
+        statement = """SELECT EXISTS(SELECT 1 FROM Users WHERE UPPER(nickname)=UPPER("{user}"))"""
+        statement = statement.format(user = user)
         self.c.execute(statement)
         exists = self.c.fetchone()[0]
 
-        if exists == 1:
-            statement = ("INSERT INTO Users (nickname) VALUES (\"" + user + "\")")
+        if not exists == 1:
+            statement = """INSERT INTO Users (nickname) VALUES ("{user}")"""
+            statement = statment.format(user = user)
+            self.c.execute(statement)
+            self.conn.commit()
 
     def AddWord(self, user, word):
-        statement = "SELECT EXISTS(SELECT 1 FROM Words WHERE UPPER(word)=UPPER(\"" + word +"\"));";
+        statement = """SELECT EXISTS(SELECT 1 FROM Words WHERE UPPER(word)=UPPER("{word}"));"""
+        statement = statement.format(word = word)
         self.c.execute(statement)
-
         exists = self.c.fetchone()[0]
 
         if exists == 1:
-            statement = "UPDATE Words SET OCCURRENCES = OCCURRENCES + 1 WHERE UPPER(word)=UPPER(\"" + word +"\");";
+            statement = """UPDATE Words SET occurrences = occurrences + 1 WHERE UPPER(word)=UPPER("{word}");"""
+            statement = statement.format(word = word)
         else:
-            statement = "INSERT INTO Words (word, OCCURRENCES) VALUES (\"" + word + "\"," + "1);";
+            statement = """INSERT INTO Words (word, occurrences) VALUES ("{word}", 1);"""
+            statement = statement.format(word = word)
 
         self.c.execute(statement)
         self.conn.commit()
 
+        statement = """SELECT EXISTS(SELECT 1 FROM UserWords
+                    WHERE wordid=(SELECT ID from Words WHERE UPPER(word)=UPPER("{word}"))
+                    AND userid=(SELECT ID from Users WHERE UPPER(nickname)=UPPER("{user}")));"""
+        statement = statement.format(word = word, user = user)
+        self.c.execute(statement)
+        exists = self.c.fetchone()[0]
+
+        if exists == 1:
+            statement = """UPDATE UserWords SET OCCURRENCES = OCCURRENCES + 1
+                        WHERE wordid=(SELECT ID from Words WHERE UPPER(word)=UPPER("{word}"))
+                        AND userid=(SELECT ID from Users WHERE UPPER(nickname)=UPPER("{user}"));"""
+            statement = statement.format(word = word, user = user)
+        else:
+            statement = """INSERT INTO UserWords (userid, wordid, OCCURRENCES)
+                        VALUES ((SELECT ID from Users WHERE UPPER(nickname)=UPPER("{user}")),
+                        (SELECT ID from Words WHERE UPPER(word)=UPPER("{word}")), 1);"""
+            statement = statement.format(word = word, user = user)
+
+        self.c.execute(statement)
+        self.conn.commit()
 
     def AddWordChain(self, first, second):
-        statement = ("SELECT EXISTS(SELECT 1 FROM WordCouples WHERE firstword=(SELECT ID FROM Words WHERE UPPER(word) = UPPER(\"" + first  + "\")) AND secondword =(SELECT ID FROM Words WHERE UPPER(word)=UPPER(\"" + second  + "\")));")
+        statement = """SELECT EXISTS(SELECT 1 FROM WordCouples
+                    WHERE firstword=(SELECT ID FROM Words WHERE UPPER(word) = UPPER("{first}"))
+                    AND secondword=(SELECT ID FROM Words WHERE UPPER(word)=UPPER("{second}")));"""
+        statement = statement.format(first = first, second = second)
         self.c.execute(statement)
 
         try:
             exists = self.c.fetchone()[0]
             if exists == 1:
-                statement = ("UPDATE WordCouples SET OCCURRENCES = OCCURRENCES + 1 WHERE firstword=(SELECT ID FROM Words WHERE UPPER(word)=UPPER(\"" + first + "\")) AND secondword=(SELECT ID FROM Words WHERE UPPER(word)=UPPER(\"" + second + "\"));")
+                statement = """UPDATE WordCouples SET OCCURRENCES = OCCURRENCES + 1
+                            WHERE firstword=(SELECT ID FROM Words WHERE UPPER(word)=UPPER("{first}"))
+                            AND secondword=(SELECT ID FROM Words WHERE UPPER(word)=UPPER("{second}"));"""
+                statement = statement.format(first = first, second = second)
             else:
-                statement = ("INSERT INTO WordCouples (firstword, secondword, occurrences) VALUES ((SELECT ID FROM Words WHERE UPPER(word)=UPPER(\"" + first + "\")), (SELECT ID FROM Words WHERE UPPER(word)=UPPER(\"" + second + "\"))," + "1);")
+                statement = """INSERT INTO WordCouples (firstword, secondword, occurrences)
+                            VALUES ((SELECT ID FROM Words WHERE UPPER(word)=UPPER("{first}")),
+                            (SELECT ID FROM Words WHERE UPPER(word)=UPPER("{second}")), 1);"""
+                statement = statement.format(first = first, second = second)
 
             self.c.execute(statement)
         except:
@@ -96,6 +129,7 @@ class Markov():
 
     def AddMessage(self, user, msg):
         words = self.FormatMessage(msg)
+        self.AddUser(user)
 
         if len(words) > 1:
             self.AddWord(user, words[0])
@@ -115,7 +149,9 @@ class Markov():
         return output
 
     def GetWordList(self, word):
-        statement = ("SELECT Words.word, WordCouples.occurrences FROM WordCouples INNER JOIN Words ON Words.ID=WordCouples.secondword WHERE firstword =(SELECT ID FROM Words WHERE UPPER(word)=UPPER(\"" + word +"\"));")
+        statement = """SELECT Words.word, WordCouples.occurrences FROM WordCouples
+                    INNER JOIN Words ON Words.ID=WordCouples.secondword WHERE firstword =(SELECT ID FROM Words WHERE UPPER(word)=UPPER("{word}"));"""
+        statement = statement.format(word = word)
         self.c.execute(statement)
 
         output = self.c.fetchall()
@@ -127,13 +163,26 @@ class Markov():
         return self.c.fetchone()[1]
 
     def GetStats(self, user):
-        statement = "SELECT Words.word UserWords.occurrences FROM Words ORDER BY UserWords.occurrences INNER JOIN UserWords WHERE userid=(SELECT id FROM Users WHERE UPPER(nickname)=UPPER(\""+user + "\"))"
+        statement = """SELECT Words.word, UserWords.occurrences FROM UserWords
+                    INNER JOIN Words ON Words.ID=UserWords.wordid
+                    WHERE userid=(SELECT id FROM Users WHERE UPPER(nickname)=UPPER("{user}"))
+                    ORDER BY UserWords.occurrences DESC LIMIT 10"""
+        statement = statement.format(user = user)
         self.c.execute(statement)
+        output = ""
+        result = self.c.fetchall()
+        count = 1
+        if len(result) == 10:
+            output = "Wordstats for " + user + " ▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬ "
+            for row in result:
+                line = str(count) + ". " + str(row[0]) + " (" + str(row[1]) + " times) " + " ▬ "
+                count += 1
+                output += line
+            output += " ▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬ "
+        else:
+            output = "Not enough data for that user"
 
-        for row in c:
-            print(row[0], row[1])
-
-        return self.c.fetchall()
+        return output
 
     def CreateMessage(self):
         word = self.GetRandomWord()
@@ -169,35 +218,17 @@ class Markov():
 
     def ScanFile(self, filename):
         num_lines = sum(1 for line in open(filename, "r"))
-
-        percent = num_lines // 100
-        lines_read = 0
-
         f = open(filename, "r")
-
         print("Scanning file...")
         for line in tqdm(range(num_lines)):
             self.AddMessage(filename, f.readline())
 
-            lines_read += 1
-            if(lines_read % percent == 0):
-                progress = lines_read // percent
-                #print(progress,"%")
-
     def ExportWordList(self, filename):
         f = open(filename, "w")
-
-        statement = ("SELECT occurrences, word FROM Words ORDER BY occurrences DESC")
+        statement = """SELECT occurrences, word FROM Words ORDER BY occurrences DESC"""
         self.c.execute(statement)
-
         print("Exporting list of words to ", filename, "...")
         for row in tqdm(self.c):
             out = row[0], " ", row[1], "\n"
             f.write(str(row[1]) + " " + str(row[0]) + str("\n"))
         print("Export complete!")
-
-    def closeDb(self):
-        self.conn.close()
-
-mark = Markov()
-mark.CreateMessage()

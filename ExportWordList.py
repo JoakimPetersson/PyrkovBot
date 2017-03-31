@@ -1,4 +1,8 @@
+import sys
 from Markov import *
 
 markov = Markov()
-markov.ExportWordList("Wordlist.txt")
+try:
+    markov.ExportWordList(sys.argv[1])
+except:
+    print("You probably forgot the filename")
